@@ -14,9 +14,9 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
-	"github.com/duke-git/lancet/v2/netutil"
 	stdlog "log"
 	"net/http"
 	_ "net/http/pprof"
@@ -24,6 +24,8 @@ import (
 	"os/user"
 	"runtime"
 	"sort"
+
+	"github.com/duke-git/lancet/v2/netutil"
 
 	"github.com/prometheus/common/promlog"
 	"github.com/prometheus/common/promlog/flag"
@@ -52,6 +54,26 @@ type handler struct {
 	includeExporterMetrics  bool
 	maxRequests             int
 	logger                  log.Logger
+}
+
+type basicAuthHandler struct {
+	next     http.Handler
+	username string
+	password string
+}
+
+func (h *basicAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	user, pass, ok := r.BasicAuth()
+	if ok &&
+		subtle.ConstantTimeCompare([]byte(user), []byte(h.username)) == 1 &&
+		subtle.ConstantTimeCompare([]byte(pass), []byte(h.password)) == 1 {
+		h.next.ServeHTTP(w, r)
+		return
+	}
+
+	w.Header().Set("WWW-Authenticate", `Basic realm="node_exporter"`)
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte("Unauthorized\n"))
 }
 
 func newHandler(includeExporterMetrics bool, maxRequests int, logger log.Logger) *handler {
@@ -189,6 +211,14 @@ func main() {
 		maxProcs = kingpin.Flag(
 			"runtime.gomaxprocs", "The target number of CPUs Go will run on (GOMAXPROCS)",
 		).Envar("GOMAXPROCS").Default("1").Int()
+		authUsername = kingpin.Flag(
+			"web.auth-username",
+			"Basic auth username for all HTTP endpoints. Leave empty to disable basic auth.",
+		).Default("").String()
+		authPassword = kingpin.Flag(
+			"web.auth-password",
+			"Basic auth password for all HTTP endpoints. Leave empty to disable basic auth.",
+		).Default("").String()
 		toolkitFlags = kingpinflag.AddFlags(kingpin.CommandLine, ":9100")
 	)
 
@@ -267,6 +297,18 @@ func main() {
 		}
 	}
 	server := &http.Server{}
+	if *authUsername != "" || *authPassword != "" {
+		if *authUsername == "" || *authPassword == "" {
+			level.Error(logger).Log("msg", "Both --web.auth-username and --web.auth-password must be set together")
+			os.Exit(1)
+		}
+		server.Handler = &basicAuthHandler{
+			next:     http.DefaultServeMux,
+			username: *authUsername,
+			password: *authPassword,
+		}
+		level.Info(logger).Log("msg", "HTTP basic auth enabled for all endpoints")
+	}
 	if err := web.ListenAndServe(server, toolkitFlags, logger); err != nil {
 		if *slurmMonitorRegisterEnable {
 			type RemoveData struct {
