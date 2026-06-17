@@ -1,0 +1,36 @@
+name: centos7-build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: centos:7
+    steps:
+    - name: Install build dependencies
+      run: |
+        yum install -y epel-release
+        yum install -y gcc make wget xz upx
+
+    - name: Install Go
+      run: |
+        wget -q https://go.dev/dl/go1.24.0.linux-amd64.tar.gz
+        tar -C /usr/local -xzf go1.24.0.linux-amd64.tar.gz
+        ln -s /usr/local/go/bin/go /usr/local/bin/go
+
+    - uses: actions/checkout@v4
+
+    - name: Build
+      run: CGO_ENABLED=1 go build -a -ldflags="-extldflags=-static"
+
+    - name: UPX compress
+      run: upx --best node_exporter
+
+    - name: Upload binary as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: node_exporter-centos7
+        path: node_exporter
+        retention-days: 1
