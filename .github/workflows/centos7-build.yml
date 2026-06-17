@@ -6,42 +6,38 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: centos:7
     steps:
-    - name: Configure yum mirrors
-      run: |
-        # CentOS 7 EOL: replace official repos with vault mirrors
-        sed -i 's/mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/CentOS-*.repo
-        sed -i 's|#baseurl=http://mirror.centos.org/centos/$releasever|baseurl=http://vault.centos.org/centos/7.9.2009|g' /etc/yum.repos.d/CentOS-*.repo
-        sed -i 's|gpgcheck=1|gpgcheck=0|g' /etc/yum.repos.d/CentOS-*.repo
-
-    - name: Install EPEL
-      run: |
-        yum install -y epel-release
-        # EPEL 7 EOL: replace with Fedora archive mirror
-        sed -i 's|^metalink=|#metalink=|g' /etc/yum.repos.d/epel*.repo
-        sed -i 's|^#baseurl=|baseurl=|g' /etc/yum.repos.d/epel*.repo
-        sed -i 's|download.fedoraproject.org/pub/epel|archives.fedoraproject.org/pub/archive/epel|g' /etc/yum.repos.d/epel*.repo
-        sed -i 's|download.example/pub/epel|archives.fedoraproject.org/pub/archive/epel|g' /etc/yum.repos.d/epel*.repo
-
-    - name: Install build dependencies
-      run: |
-        yum install -y gcc make wget xz upx
-
-    - name: Install Go
-      run: |
-        wget -q https://go.dev/dl/go1.24.0.linux-amd64.tar.gz
-        tar -C /usr/local -xzf go1.24.0.linux-amd64.tar.gz
-        ln -s /usr/local/go/bin/go /usr/local/bin/go
-
     - uses: actions/checkout@v4
 
-    - name: Build
-      run: CGO_ENABLED=1 go build -a -ldflags="-extldflags=-static"
+    - name: Build in CentOS 7 container
+      run: |
+        docker run --rm -v $PWD:/workspace -w /workspace centos:7 bash -c '
+          set -e
+          # CentOS 7 EOL: replace official repos with vault mirrors
+          sed -i "s/mirrorlist=/#mirrorlist=/g" /etc/yum.repos.d/CentOS-*.repo
+          sed -i "s|#baseurl=http://mirror.centos.org/centos/\$releasever|baseurl=http://vault.centos.org/centos/7.9.2009|g" /etc/yum.repos.d/CentOS-*.repo
+          sed -i "s|gpgcheck=1|gpgcheck=0|g" /etc/yum.repos.d/CentOS-*.repo
 
-    - name: UPX compress
-      run: upx --best node_exporter
+          # Install EPEL
+          yum install -y epel-release
+          sed -i "s|^metalink=|#metalink=|g" /etc/yum.repos.d/epel*.repo
+          sed -i "s|^#baseurl=|baseurl=|g" /etc/yum.repos.d/epel*.repo
+          sed -i "s|download.fedoraproject.org/pub/epel|archives.fedoraproject.org/pub/archive/epel|g" /etc/yum.repos.d/epel*.repo
+
+          # Install build dependencies
+          yum install -y gcc make wget xz upx
+
+          # Install Go
+          wget -q https://go.dev/dl/go1.24.0.linux-amd64.tar.gz
+          tar -C /usr/local -xzf go1.24.0.linux-amd64.tar.gz
+          ln -s /usr/local/go/bin/go /usr/local/bin/go
+
+          # Build
+          CGO_ENABLED=1 go build -a -ldflags="-extldflags=-static"
+
+          # UPX compress
+          upx --best node_exporter
+        '
 
     - name: Upload binary as artifact
       uses: actions/upload-artifact@v4
