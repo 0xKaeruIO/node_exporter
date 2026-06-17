@@ -11,19 +11,19 @@ jobs:
     steps:
     - name: Configure yum mirrors
       run: |
-        # CentOS 7 EOL: replace official repos with Aliyun vault mirror
+        # CentOS 7 EOL: replace official repos with vault mirrors
         sed -i 's/mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/CentOS-*.repo
-        sed -i 's|#baseurl=http://mirror.centos.org/centos|baseurl=http://mirrors.aliyun.com/centos-vault/7.9.2009|g' /etc/yum.repos.d/CentOS-*.repo
+        sed -i 's|#baseurl=http://mirror.centos.org/centos/$releasever|baseurl=http://vault.centos.org/centos/7.9.2009|g' /etc/yum.repos.d/CentOS-*.repo
         sed -i 's|gpgcheck=1|gpgcheck=0|g' /etc/yum.repos.d/CentOS-*.repo
 
     - name: Install EPEL
       run: |
         yum install -y epel-release
-        # Replace EPEL repo with Aliyun mirror
+        # EPEL 7 EOL: replace with Fedora archive mirror
         sed -i 's|^metalink=|#metalink=|g' /etc/yum.repos.d/epel*.repo
         sed -i 's|^#baseurl=|baseurl=|g' /etc/yum.repos.d/epel*.repo
-        sed -i 's|download.fedoraproject.org/pub|mirrors.aliyun.com|g' /etc/yum.repos.d/epel*.repo
-        sed -i 's|download.example/pub|mirrors.aliyun.com|g' /etc/yum.repos.d/epel*.repo
+        sed -i 's|download.fedoraproject.org/pub/epel|archives.fedoraproject.org/pub/archive/epel|g' /etc/yum.repos.d/epel*.repo
+        sed -i 's|download.example/pub/epel|archives.fedoraproject.org/pub/archive/epel|g' /etc/yum.repos.d/epel*.repo
 
     - name: Install build dependencies
       run: |
